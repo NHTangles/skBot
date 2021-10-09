@@ -81,6 +81,7 @@ class scoreBoard:
         self.alltime = sbPeriod("all time", curtime, datetime.max)
         self.unit = "point"
         self.units = "points"
+        self.yesterday = self.lastweek = self.lastmonth = self.lastyear = None
 
     def setTZ(self, tz):
         self.tz = tz
@@ -173,7 +174,7 @@ def newBoard(update, context):
         if nb in cd['scores']:
             context.bot.send_message(chat_id=chat, text="Scoreboard {0} already exists!".format(nb))
         else:
-            cd['scores'][nb] = ScoreBoard(nb)
+            cd['scores'][nb] = scoreBoard(nb,cd.get('tz',gettz('UTC')))
             if 'defSB' not in cd: cd['defSB'] = cd['scores'][nb]
             context.bot.send_message(chat_id=chat,
                                      text='New scoreboard {0} created.'.format(nb))
@@ -263,7 +264,8 @@ def setTZ(update, context):
                 text = "TZ {0} not recognised. Try something like /settz Australia/Canberra".format(tzname) )
         return
     for sb in cd['scores']:
-        sb.setTZ(tzname)
+        sb.setTZ(tz)
+    cd['tz'] = tz
     
 def listcmds(update, context):
     msg = ''
@@ -290,6 +292,10 @@ def printScores(update, context):
         period = context.args[0]
     else:
         period = "day"
+    if not lookup[period]:
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                text = "No scores for {0}.".format(period));
+        return
     try:
         msg = lookup[period].formatScores()
         context.bot.send_message(chat_id=update.effective_chat.id, text = msg);
