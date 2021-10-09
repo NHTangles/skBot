@@ -40,7 +40,7 @@ class sbPeriod:
     def formatScores(self):
         if self.timeInPeriod(datetime.now(self.tz)):
             current = ' (current)'
-        else
+        else:
             current = ''
         message = '{0} for {1}{2}:'.format(self.units, self.name, current)
   
@@ -61,10 +61,10 @@ class scoreBoard:
         start = curtime.replace (hour=0, minute=0, second=0, microsecond=0)
         end = start + timedelta(days=1)
         
-        self.today = sbPeriod(curtime.strftime("%A, %B %d, %Y" start, end)
+        self.today = sbPeriod(curtime.strftime("%A, %B %d, %Y"), start, end)
         weekstart = start - timedelta(days=start.weekday())
         end = weekstart + timedelta(days=7)
-        self.thisweek = sbPeriod(curtime.strftime("Week %U, %Y", weekstart, end)
+        self.thisweek = sbPeriod(curtime.strftime("Week %U, %Y"), weekstart, end)
         if start.month == 12:
             endmonth = 1
             endyear = start.year + 1
@@ -104,12 +104,12 @@ class scoreBoard:
         self.yesterday = self.today
         start = curtime.replace (hour=0, minute=0, second=0, microsecond=0)
         end = start + timedelta(days=1)
-        self.today = sbPeriod(curtime.strftime("%A, %B %d, %Y" start, end)
+        self.today = sbPeriod(curtime.strftime("%A, %B %d, %Y"), start, end)
         if curtime >= self.thisweek.end:
             self.lastweek = self.thisweek
             weekstart = start - timedelta(days=start.weekday())
             end = weekstart + timedelta(days=7)
-            self.thisweek = sbPeriod(curtime.strftime("Week %U, %Y", weekstart, end)
+            self.thisweek = sbPeriod(curtime.strftime("Week %U, %Y"), weekstart, end)
         if curtime < self.thismonth.end:
             return # nothing to do for month/year
         self.lastmonth = self.thismonth
@@ -188,10 +188,11 @@ def delBoard(update, context):
     chat = update.effective_chat.id
     if len(context.args) == 0:
         context.bot.send_message(chat_id=chat, text='Usage: /delboard <boardName>.')
-    board = getBoard(chat, cd, context.args[0]):
+    board = getBoard(chat, cd, context.args[0])
     if board: 
         bd['boards'].remove(board)
         del cd['scores'][context.args[0]]
+        context.bot.send_message(chat_id=chat, text='board {0} deleted.'.format(context.args[0]))
 
 def getBoard(chat, cd, name):
     if(name): 
@@ -222,7 +223,7 @@ def addscore(update, context):
         score = int(context.args[0])
     except:
         context.bot.send_message(chat_id=chat,
-             text='Usage: /add <points> [boardName] - points must be a whole number.'
+             text='Usage: /add <points> [boardName] - points must be a whole number.')
         return
     context.bot.send_message(chat_id=chat,
          text=sb.addScore(score))
@@ -233,7 +234,7 @@ def setUnits(update, context):
     cd = context.chat_data
     boardName = None
     if len(context.args) > 2:
-        boardName = context.args[2])
+        boardName = context.args[2]
     sb = getBoard(chat,cd,boardName)
     if not sb: return
 
@@ -259,7 +260,7 @@ def setTZ(update, context):
         tz = gettz(tzname)
     except:
         context.bot.send_message(chat_id=update.effective_chat.id,
-                text = "TZ {0} not recognised. Try something like /settz Australia/Canberra".format{tzname} )
+                text = "TZ {0} not recognised. Try something like /settz Australia/Canberra".format(tzname) )
         return
     for sb in cd['scores']:
         sb.setTZ(tzname)
@@ -325,7 +326,7 @@ def main():
         dp.add_handler(CommandHandler(name, callback))
 
     # Make this run every 15 minutes, on the quarter-hour
-    jq.run_repeating(rolloverPeriods, interval=900, first=(900-datetime.now().seconds%900))
+    jq.run_repeating(rolloverPeriods, interval=900, first=(900 - datetime.now().second % 900))
     updater.start_polling()
     updater.idle()
 
