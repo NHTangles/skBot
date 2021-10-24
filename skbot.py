@@ -5,6 +5,7 @@ import requests
 import logging
 from datetime import datetime, timezone, time, timedelta
 from dateutil.tz import gettz
+from warnings import filterwarnings, resetwarnings
 
 #import bz2
 #import json
@@ -19,10 +20,11 @@ from local import BOTTOKEN
 # datetime objects marking the start and end of the period)
 # sBMember objects for members active in that period
 # addscore() method that deals with creating new members if necessary
-# 
+#
 class sbPeriod:
-    def __init__(self, name, start, end):
+    def __init__(self, board, name, start, end):
         self.name = name
+        self.board = board
         self.start = start
         self.end = end
         self.scores = {}
@@ -36,20 +38,20 @@ class sbPeriod:
     def addScoreIfTime(self, user, s, tm):
         if self.timeInPeriod(tm):
             self.addScore(user, s)
-        
-    def formatScores(self):
-        if self.timeInPeriod(datetime.now(self.tz)):
+
+    def formatScores(self, nicks):
+        if self.timeInPeriod(datetime.now(self.board.tz)):
             current = ' (current)'
         else:
             current = ''
-        message = '{0} for {1}{2}:'.format(self.units, self.name, current)
-  
+        message = '{0} for {1}{2}:'.format(self.board.units, self.name, current)
+
         for rank, usr in enumerate(sorted(self.scores, key=lambda x: self.scores[x], reverse = True), start=1):
-            message += '\n{rank: >2}. {usr: <16} {score: >9}'.format(usr=usr, rank=rank, score=self.scores[usr])
+            message += '\n{rank: >2}. {usr: <16} {score: >9}'.format(usr=getNickOrDefault(nicks,usr), rank=rank, score=str(self.scores[usr]))
         return message
 
 # Actual Scoreboard object
-# sBPeriod objects for current/previous d/w/m/y and alltime. 
+# sBPeriod objects for current/previous d/w/m/y and alltime.
 # add() methods for current/prev day, adds to all relevant sBPeriods
 # logic for rolling days/weeks/months/years
 class scoreBoard:
@@ -60,11 +62,11 @@ class scoreBoard:
         curtime = datetime.now(tz)
         start = curtime.replace (hour=0, minute=0, second=0, microsecond=0)
         end = start + timedelta(days=1)
-        
-        self.today = sbPeriod(curtime.strftime("%A, %B %d, %Y"), start, end)
+
+        self.today = sbPeriod(self, curtime.strftime("%A, %B %d, %Y"), start, end)
         weekstart = start - timedelta(days=start.weekday())
         end = weekstart + timedelta(days=7)
-        self.thisweek = sbPeriod(curtime.strftime("Week %U, %Y"), weekstart, end)
+        self.thisweek = sbPeriod(self, curtime.strftime("Week %U, %Y"), weekstart, end)
         if start.month == 12:
             endmonth = 1
             endyear = start.year + 1
@@ -73,12 +75,14 @@ class scoreBoard:
             endyear = start.year
         monthstart = start.replace(day=1)
         end = start.replace(day=1, month=endmonth, year=endyear)
-        self.thismonth = sbPeriod(curtime.strftime("%B, %Y"), monthstart, end)
+        self.thismonth = sbPeriod(self, curtime.strftime("%B, %Y"), monthstart, end)
         yearstart = start.replace(day=1,month=1)
         end = yearstart.replace(year=yearstart.year + 1)
-        self.thisyear = sbPeriod(curtime.strftime("%Y"), yearstart, end)
+        self.thisyear = sbPeriod(self, curtime.strftime("%Y"), yearstart, end)
         # "all time" starts when it's created.
-        self.alltime = sbPeriod("all time", curtime, datetime.max)
+        dtmax = datetime.max
+        dtmax = dtmax.replace(tzinfo=tz)
+        self.alltime = sbPeriod(self, "all time", curtime, dtmax)
         self.unit = "point"
         self.units = "points"
         self.yesterday = self.lastweek = self.lastmonth = self.lastyear = None
@@ -105,26 +109,26 @@ class scoreBoard:
         self.yesterday = self.today
         start = curtime.replace (hour=0, minute=0, second=0, microsecond=0)
         end = start + timedelta(days=1)
-        self.today = sbPeriod(curtime.strftime("%A, %B %d, %Y"), start, end)
+        self.today = sbPeriod(self, curtime.strftime("%A, %B %d, %Y"), start, end)
         if curtime >= self.thisweek.end:
             self.lastweek = self.thisweek
             weekstart = start - timedelta(days=start.weekday())
             end = weekstart + timedelta(days=7)
-            self.thisweek = sbPeriod(curtime.strftime("Week %U, %Y"), weekstart, end)
+            self.thisweek = sbPeriod(self, curtime.strftime("Week %U, %Y"), weekstart, end)
         if curtime < self.thismonth.end:
             return # nothing to do for month/year
         self.lastmonth = self.thismonth
         monthstart = start.replace(day=1)
         end = start.replace(day=1, month=endmonth, year=endyear)
-        self.thismonth = sbPeriod(curtime.strftime("%B, %Y"), monthstart, end)
+        self.thismonth = sbPeriod(self, curtime.strftime("%B, %Y"), monthstart, end)
         if curtime < self.thisyear.end:
-            return 
+            return
         self.lastyear = self.thisyear
         yearstart = start.replace(day=1,month=1)
         end = yearstart.replace(year=yearstart.year + 1)
-        self.thisyear = sbPeriod(curtime.strftime("%Y"), yearstart, end)
-        
-    def addScore(self, user, points, yday = False):
+        self.thisyear = sbPeriod(self, curtime.strftime("%Y"), yearstart, end)
+
+    def addScore(self, user, nick, points, yday = False):
         addtime = datetime.now(self.tz)
         if yday:
             addtime -= timedelta(days=1)
@@ -133,8 +137,8 @@ class scoreBoard:
                         self.thismonth, self.lastmonth,
                         self.thisyear, self.lastyear,
                         self.alltime ]:
-            period.addScoreIfTime(user, points, addtime)
-        return "{score} {u} added for {usr}".format(score=points, u=self.unit if points == 1 else self.units, usr=user)
+            if period: period.addScoreIfTime(user, points, addtime)
+        return "{score} {u} added for {nick}".format(score=points, u=self.unit if points == 1 else self.units, nick=nick)
 
 def init(context):
     log = logging.getLogger('skbot')
@@ -148,8 +152,8 @@ def start(update, context):
     cd = context.chat_data
     if 'scores' not in cd:
         cd['scores'] = {}
-        context.bot.send_message(chat_id=chat, text="To get started, please create a new scoreboard, with /newboard")
-        context.bot.send_message(chat_id=chat, text='Type "/help" for more')
+    context.bot.send_message(chat_id=chat, text="To get started, please create a new scoreboard, with /newboard")
+    context.bot.send_message(chat_id=chat, text='Type "/help" for more')
 
 # Obligatory random.dog pic from sample code.
 def get_url():
@@ -179,7 +183,7 @@ def newBoard(update, context):
             context.bot.send_message(chat_id=chat,
                                      text='New scoreboard {0} created.'.format(nb))
             if 'boards' not in bd: bd['boards'] = []
-            bd['boards'].append(cd['scores'][nb]) 
+            bd['boards'].append(cd['scores'][nb])
     else:
         context.bot.send_message(chat_id=chat, text='Usage: /newboard <boardName>.')
 
@@ -189,36 +193,38 @@ def delBoard(update, context):
     chat = update.effective_chat.id
     if len(context.args) == 0:
         context.bot.send_message(chat_id=chat, text='Usage: /delboard <boardName>.')
-    board = getBoard(chat, cd, context.args[0])
-    if board: 
+    board = getBoard(context, chat, context.args[0])
+    if board:
         bd['boards'].remove(board)
         del cd['scores'][context.args[0]]
         context.bot.send_message(chat_id=chat, text='board {0} deleted.'.format(context.args[0]))
 
-def getBoard(chat, cd, name):
-    if(name): 
+def getBoard(context, chat, name):
+    cd = context.chat_data
+    if(name):
         try:
             return cd['scores'][name]
         except:
             context.bot.send_message(chat_id=chat,
-                text='Scoreboard {0} does not exist.\nUse /newboard to create it'.format(name)) 
+                text='Scoreboard {0} does not exist.\nUse /newboard to create it'.format(name))
             return None
     try:
         return cd['defSB']
     except:
         context.bot.send_message(chat_id=chat,
-              text='no scoreboards exist.\nUse /newboard to create one'.format(boardName)) 
+              text='no scoreboards exist.\nUse /newboard to create one'.format(boardName))
         return None
-        
-def addscore(update, context):
+
+def addScore(update, context):
     chat = update.effective_chat.id
     user = update.effective_user
     cd = context.chat_data
+    nicks = context.bot_data.get('nicks',None)
     if len(context.args) > 1:
         boardName = context.args[1]
     else:
         boardName = None
-    sb = getBoard(chat, cd, boardName)
+    sb = getBoard(context, chat, boardName)
     if not sb: return
     try:
         score = int(context.args[0])
@@ -227,46 +233,46 @@ def addscore(update, context):
              text='Usage: /add <points> [boardName] - points must be a whole number.')
         return
     context.bot.send_message(chat_id=chat,
-         text=sb.addScore(score))
+         text=sb.addScore(user, getNickOrDefault(nicks, user), score))
 
 def setUnits(update, context):
     chat = update.effective_chat.id
-    user = update.effective_user
     cd = context.chat_data
     boardName = None
     if len(context.args) > 2:
         boardName = context.args[2]
-    sb = getBoard(chat,cd,boardName)
+    sb = getBoard(context, chat, boardName)
     if not sb: return
 
     if len(context.args) > 1:
-        sb.setUnit(context.args[0], context,args[1])
+        sb.setUnit(context.args[0], context.args[1])
     elif len(context.args) > 0:
         sb.setUnit(context.args[0])
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id,
+        context.bot.send_message(chat_id=chat,
                 text = "Usage: /unit <unit> [units [scoreboard]]\nunit (singular, required); units (plural); name of scoreboard to apply units" )
 
 def setTZ(update, context):
     chat = update.effective_chat.id
-    user = update.effective_user
     cd = context.chat_data
-    try: 
-        tzname = context.args[1]
+    try:
+        tzname = context.args[0]
     except:
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                text = "Usage: /settz <tzname>" )
+        context.bot.send_message(chat_id=chat, text = "Usage: /settz <tzname>" )
         return
+    filterwarnings('error')
     try:
         tz = gettz(tzname)
     except:
-        context.bot.send_message(chat_id=update.effective_chat.id,
+        context.bot.send_message(chat_id=chat,
                 text = "TZ {0} not recognised. Try something like /settz Australia/Canberra".format(tzname) )
         return
-    for sb in cd['scores']:
-        sb.setTZ(tz)
+    resetwarnings()
+    if 'scores' in cd:
+        for sb in cd['scores']:
+            sb.setTZ(tz)
     cd['tz'] = tz
-    
+
 def listcmds(update, context):
     msg = ''
     for (name, callback, desc) in commands:
@@ -275,36 +281,83 @@ def listcmds(update, context):
 
 def printScores(update, context):
     chat = update.effective_chat.id
-    user = update.effective_user
     cd = context.chat_data
+    nicks = context.bot_data.get('nicks', None)
     usage = "/scores [period [board]] period=day,week,month,year,yesterday,lastweek,lastmonth,lastyear,all"
     boardName = None
     if len(context.args) > 1:
         boardName = context.args[1]
-    sb = getBoard(chat,cd,boardName)
+    sb = getBoard(context, chat, boardName)
     if not sb: return
     lookup = { "day"  : sb.today,     "yesterday": sb.yesterday,
                "week" : sb.thisweek,  "lastweek" : sb.lastweek,
                "month": sb.thismonth, "lastmonth": sb.lastmonth,
                "year" : sb.thisyear,  "lastyear" : sb.lastyear,
-               "all"  : sb.alltime } 
+               "all"  : sb.alltime }
     if len(context.args) > 0:
         period = context.args[0]
+        if period not in lookup:
+            context.bot.send_message(chat_id=chat, text = usage);
+            return
     else:
         period = "day"
     if not lookup[period]:
-        context.bot.send_message(chat_id=update.effective_chat.id,
+        context.bot.send_message(chat_id=chat,
                 text = "No scores for {0}.".format(period));
         return
     try:
-        msg = lookup[period].formatScores()
-        context.bot.send_message(chat_id=update.effective_chat.id, text = msg);
+         msg = lookup[period].formatScores(nicks)
     except:
-        context.bot.send_message(chat_id=update.effective_chat.id, text = usage);
+        context.bot.send_message(chat_id=chat, text = usage);
         return
-    context.bot.send_message(chat_id=update.effective_chat.id, text = msg);
-    
-    
+    context.bot.send_message(chat_id=chat, text = msg);
+
+def listBoards(update, context):
+    chat = update.effective_chat.id
+    cd = context.chat_data
+    sblist = []
+    if 'scores' not in cd:
+        context.bot.send_message(chat_id=chat, text = "No scoreboards!");
+        return
+    for sb in cd['scores'].keys():
+        sblist.append('{0}{1}'.format(sb,' [default]' if cd['scores'][sb] == cd['defSB'] else ''))
+    context.bot.send_message(chat_id=chat, text = "\n".join(sblist));
+
+def updateNick(bd, userid, nick):
+    if "nicks" not in bd:
+        bd["nicks"] = {}
+    if nick:
+        bd["nicks"][userid] = nick
+    else:
+        if bd["nicks"][userid]: del bd["nicks"][userid]
+
+def getNick(nicks, userid):
+    if not nicks: return None
+    return nicks.get(userid, None)
+
+def getNickOrDefault(nicks, user):
+    nick = getNick (nicks, user.id)
+    if nick: return nick
+    if user.username: return user.username
+    else: return user.first_name
+
+
+def setNick(update, context):
+    chat = update.effective_chat.id
+    userid = update.effective_user.id
+    bd = context.bot_data
+    if len(context.args) > 0:
+        nick = context.args[0]
+        updateNick(bd, userid, nick)
+        context.bot.send_message(chat_id=chat, text = "Nick set to {0}.".format(nick));
+    else:
+        oldNick = getNick(bd.get('nicks',None), userid)
+        if oldNick:
+            updateNick(bd, userid, None)
+            context.bot.send_message(chat_id=chat, text = "Nick for {0} removed.".format(oldNick));
+        else:
+            context.bot.send_message(chat_id=chat, text = "No nick set.");
+
 def rolloverPeriods(context):
     if 'boards' not in context.bot_data: return
     for sb in context.bot_data['boards']:
@@ -313,8 +366,11 @@ def rolloverPeriods(context):
 commands = [('start', start, 'Start a session with the bot - provides some basic instructions'),
             ('newboard', newBoard, 'create a new scoreboard'),
             ('delboard', delBoard, 'delete a scoreboard forever'),
-            ('unit', setUnits, 'set the unit of scoring dor a scoreboard (eg push-ups)'),
+            ('listboards', listBoards, 'List the scoreboards for this chat group'),
+            ('unit', setUnits, 'set the unit of scoring for a scoreboard (eg push-ups)'),
             ('settz', setTZ, 'set the timeone for all scoreboards in the chat'),
+            ('setnick', setNick, 'Set a nickname for the bot to call you'),
+            ('add', addScore, 'Add to scoreboard for current user'),
             ('scores', printScores, 'Print current scores and rankings'),
             ('help', listcmds, 'Show this list of commands and what they do'),
             ('woof', bop, 'Print a doggy picture, for no reason') ]
