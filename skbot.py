@@ -107,17 +107,20 @@ class scoreBoard:
         curtime = datetime.now(self.tz)
         if curtime < self.today.end:
             return # day has not changed - nothing to do
+        logging.info("Rolling over {0} - day".format(self.name))
         self.yesterday = self.today
         start = curtime.replace (hour=0, minute=0, second=0, microsecond=0)
         end = start + timedelta(days=1)
         self.today = sbPeriod(self, curtime.strftime("%A, %B %d, %Y"), start, end)
         if curtime >= self.thisweek.end:
+            logging.info("Rolling over {0} - week".format(self.name))
             self.lastweek = self.thisweek
             weekstart = start - timedelta(days=start.weekday())
             end = weekstart + timedelta(days=7)
             self.thisweek = sbPeriod(self, curtime.strftime("Week %U, %Y"), weekstart, end)
         if curtime < self.thismonth.end:
             return # nothing to do for month/year
+        logging.info("Rolling over {0} - month".format(self.name))
         self.lastmonth = self.thismonth
         monthstart = start.replace(day=1)
         if start.month == 12:
@@ -130,6 +133,7 @@ class scoreBoard:
         self.thismonth = sbPeriod(self, curtime.strftime("%B, %Y"), monthstart, end)
         if curtime < self.thisyear.end:
             return
+        logging.info("Rolling over {0} - year".format(self.name))
         self.lastyear = self.thisyear
         yearstart = start.replace(day=1,month=1)
         end = yearstart.replace(year=yearstart.year + 1)
@@ -232,7 +236,7 @@ def getBoard(context, chat, name):
               text='no scoreboards exist.\nUse /newboard to create one'.format(boardName))
         return None
 
-def addScore(update, context):
+def addScore(update, context, yday = False):
     chat = update.effective_chat.id
     user = update.effective_user
     cd = context.chat_data
@@ -247,10 +251,13 @@ def addScore(update, context):
         score = int(context.args[0])
     except:
         context.bot.send_message(chat_id=chat,
-             text='Usage: /add <points> [boardName] - points must be a whole number.')
+             text='Usage: /add[y] <points> [boardName] - points must be a whole number.')
         return
     context.bot.send_message(chat_id=chat,
-         text=sb.addScore(user, getNickOrDefault(nicks, user), score))
+         text=sb.addScore(user, getNickOrDefault(nicks, user), score, yday))
+
+def addScoreYday(update, context)
+    addScore(update,context, True)
 
 def setUnits(update, context):
     chat = update.effective_chat.id
@@ -388,6 +395,7 @@ commands = [('start', start, 'Start a session with the bot - provides some basic
             ('settz', setTZ, 'set the timeone for all scoreboards in the chat'),
             ('setnick', setNick, 'Set a nickname for the bot to call you'),
             ('add', addScore, 'Add to scoreboard for current user'),
+            ('addy', addScoreYday, "Add to yesterday's scoreboard for current user"),
             ('scores', printScores, 'Print current scores and rankings'),
             ('help', listcmds, 'Show this list of commands and what they do'),
             ('woof', bop, 'Print a doggy picture, for no reason') ]
