@@ -56,9 +56,10 @@ class sbPeriod:
 # logic for rolling days/weeks/months/years
 class scoreBoard:
     # constructor - initial setup
-    def __init__(self, name, tz):
+    def __init__(self, name, tz, owner):
         self.name = name
         self.tz = tz
+        self.owner = owner
         curtime = datetime.now(tz)
         start = curtime.replace (hour=0, minute=0, second=0, microsecond=0)
         end = start + timedelta(days=1)
@@ -170,6 +171,7 @@ def newBoard(update, context):
     cd = context.chat_data
     bd = context.bot_data
     chat = update.effective_chat.id
+    user = update.effective_user
     log = logging.getLogger('skbot')
     if len(context.args) > 0:
         if 'scores' not in cd:
@@ -178,7 +180,7 @@ def newBoard(update, context):
         if nb in cd['scores']:
             context.bot.send_message(chat_id=chat, text="Scoreboard {0} already exists!".format(nb))
         else:
-            cd['scores'][nb] = scoreBoard(nb,cd.get('tz',gettz('UTC')))
+            cd['scores'][nb] = scoreBoard(nb,cd.get('tz',gettz('UTC')), user)
             if 'defSB' not in cd: cd['defSB'] = cd['scores'][nb]
             context.bot.send_message(chat_id=chat,
                                      text='New scoreboard {0} created.'.format(nb))
@@ -191,13 +193,22 @@ def delBoard(update, context):
     cd = context.chat_data
     bd = context.bot_data
     chat = update.effective_chat.id
+    user = update.effective_user
     if len(context.args) == 0:
         context.bot.send_message(chat_id=chat, text='Usage: /delboard <boardName>.')
+        return
     board = getBoard(context, chat, context.args[0])
-    if board:
-        bd['boards'].remove(board)
-        del cd['scores'][context.args[0]]
-        context.bot.send_message(chat_id=chat, text='board {0} deleted.'.format(context.args[0]))
+    if not board:
+        context.bot.send_message(chat_id=chat, text='No such board: ' + context.args[0])
+        return
+    if board.owner.id !=  user.id:
+        context.bot.send_message(chat_id=chat,
+                text='Board {0} can only be deleted by {1}'.format(board.name,
+                        getNickOrDefault(bd['nicks'],board.owner)))
+        return
+    bd['boards'].remove(board)
+    del cd['scores'][context.args[0]]
+    context.bot.send_message(chat_id=chat, text='board {0} deleted.'.format(context.args[0]))
 
 def getBoard(context, chat, name):
     cd = context.chat_data
