@@ -256,7 +256,7 @@ def addScore(update, context, yday = False):
     context.bot.send_message(chat_id=chat,
          text=sb.addScore(user, getNickOrDefault(nicks, user), score, yday))
 
-def addScoreYday(update, context)
+def addScoreYday(update, context):
     addScore(update,context, True)
 
 def setUnits(update, context):
