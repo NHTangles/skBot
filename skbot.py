@@ -143,13 +143,18 @@ class scoreBoard:
         addtime = datetime.now(self.tz)
         if yday:
             addtime -= timedelta(days=1)
+            if not self.yesterday:
+                return "Cannot add to yesterday's tally.  Board {0} may be newer than that".format(self.name)
         for period in [ self.today, self.yesterday,
                         self.thisweek, self.lastweek,
                         self.thismonth, self.lastmonth,
                         self.thisyear, self.lastyear,
                         self.alltime ]:
             if period: period.addScoreIfTime(user, points, addtime)
-        return "{score} {u} added for {nick}".format(score=points, u=self.unit if points == 1 else self.units, nick=nick)
+        return "{score} {u} added {to_yday}for {nick}".format(score=points,
+                                                           u=self.unit if points == 1 else self.units,
+                                                           to_yday = "to yesterday's tally " if yday else "",
+                                                           nick=nick)
 
 def init(context):
     log = logging.getLogger('skbot')
