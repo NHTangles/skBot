@@ -120,6 +120,12 @@ class scoreBoard:
             return # nothing to do for month/year
         self.lastmonth = self.thismonth
         monthstart = start.replace(day=1)
+        if start.month == 12:
+            endmonth = 1
+            endyear = start.year + 1
+        else:
+            endmonth = start.month + 1
+            endyear = start.year
         end = start.replace(day=1, month=endmonth, year=endyear)
         self.thismonth = sbPeriod(self, curtime.strftime("%B, %Y"), monthstart, end)
         if curtime < self.thisyear.end:
@@ -399,7 +405,8 @@ def main():
         dp.add_handler(CommandHandler(name, callback))
 
     # Make this run every 15 minutes, on the quarter-hour
-    jq.run_repeating(rolloverPeriods, interval=900, first=(900 - datetime.now().second % 900))
+    secondsPastQuarter = (datetime.now().miunte * 60 + datetime.now().second) % 900
+    jq.run_repeating(rolloverPeriods, interval=900, first=(900 - secondsPastQuarter))
     updater.start_polling()
     updater.idle()
 
