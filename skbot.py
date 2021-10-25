@@ -405,7 +405,7 @@ def main():
         dp.add_handler(CommandHandler(name, callback))
 
     # Make this run every 15 minutes, on the quarter-hour
-    secondsPastQuarter = (datetime.now().miunte * 60 + datetime.now().second) % 900
+    secondsPastQuarter = (datetime.now().minute * 60 + datetime.now().second) % 900
     jq.run_repeating(rolloverPeriods, interval=900, first=(900 - secondsPastQuarter))
     updater.start_polling()
     updater.idle()
