@@ -17,14 +17,14 @@ Suggested use: Keep a tally of daily push-ups between you and your friends.
 * Your friends will do the same when they see you have the most pushups, and you WILL have the most, until Dan comes along and does 1000 in a single day.  Classic Dan.
 
 * To display the scoreboard for various periods:
- * `/scores day [scoreboard]`   - shows scores so far for the current day
- * `/scores week [scoreboard]`  - shows scores for the current week
- * `/scores month [scoreboard]` - shows scores for the current month
- * `/scores year [scoreboard]`  - ... you get the idea
- * `/scores alltime [scoreboard]` - shows total scores since the scoreboard was created
+  * `/scores day [scoreboard]`   - shows scores so far for the current day
+  * `/scores week [scoreboard]`  - shows scores for the current week
+  * `/scores month [scoreboard]` - shows scores for the current month
+  * `/scores year [scoreboard]`  - ... you get the idea
+  * `/scores alltime [scoreboard]` - shows total scores since the scoreboard was created
 * also...
- * `/scores yesterday`
- * `/scores lastweek`
+  * `/scores yesterday`
+  * `/scores lastweek`
 ...etc
 
 ## Other stuff
