@@ -47,7 +47,8 @@ class sbPeriod:
         message = '{0} for {1}{2}:'.format(self.board.units, self.name, current)
 
         for rank, usr in enumerate(sorted(self.scores, key=lambda x: self.scores[x], reverse = True), start=1):
-            message += '\n{rank: >2}. {usr: <16} {score: >9}'.format(usr=getNickOrDefault(nicks,usr), rank=rank, score=str(self.scores[usr]))
+            message += '\n{rank: >2}. {usr: <16} {score: >9}'.format(usr=getNickOrDefault(nicks,usr),
+                        rank=rank, score=str(self.scores[usr]))
         return message
 
 # Actual Scoreboard object
@@ -108,10 +109,16 @@ class scoreBoard:
         if curtime < self.today.end:
             return # day has not changed - nothing to do
         logging.info("Rolling over {0} - day".format(self.name))
+        logging.info("-today: {0}".format(hex(id(self.today))))
+        logging.info("-yday : {0}".format(hex(id(self.yesterday))))
         self.yesterday = self.today
         start = curtime.replace (hour=0, minute=0, second=0, microsecond=0)
         end = start + timedelta(days=1)
         self.today = sbPeriod(self, curtime.strftime("%A, %B %d, %Y"), start, end)
+        logging.info("+today: {0}".format(hex(id(self.today))))
+        logging.info("+yday : {0}".format(hex(id(self.yesterday))))
+        logging.info(start.strftime("start %A, %B %d, %Y %H:%M:%S"))
+        logging.info(  end.strftime("end   %A, %B %d, %Y %H:%M:%S"))
         if curtime >= self.thisweek.end:
             logging.info("Rolling over {0} - week".format(self.name))
             self.lastweek = self.thisweek
@@ -165,9 +172,11 @@ def init(context):
 
 def start(update, context):
     chat = update.effective_chat.id
-    cd = context.chat_data
-    if 'scores' not in cd:
-        cd['scores'] = {}
+    bd = context.bot_data
+    if 'boards' not in bd:
+        bd['boards'] = {}
+    if chat not in bd['boards']:
+        bd['boards'][chat] = {}
     context.bot.send_message(chat_id=chat, text="To get started, please create a new scoreboard, with /newboard")
     context.bot.send_message(chat_id=chat, text='Type "/help" for more')
 
@@ -189,18 +198,16 @@ def newBoard(update, context):
     user = update.effective_user
     log = logging.getLogger('skbot')
     if len(context.args) > 0:
-        if 'scores' not in cd:
-            cd['scores'] = {}
         nb = context.args[0]
-        if nb in cd['scores']:
+        if 'boards' not in bd: bd['boards'] = {}
+        if chat not in bd['boards']: bd['boards'][chat] = {}
+        if nb in bd['boards'][chat]:
             context.bot.send_message(chat_id=chat, text="Scoreboard {0} already exists!".format(nb))
         else:
-            cd['scores'][nb] = scoreBoard(nb,cd.get('tz',gettz('UTC')), user)
-            if 'defSB' not in cd: cd['defSB'] = cd['scores'][nb]
+            bd['boards'][chat][nb] = scoreBoard(nb,cd.get('tz',gettz('UTC')), user)
+            if 'defSB' not in cd: cd['defSB'] = nb
             context.bot.send_message(chat_id=chat,
                                      text='New scoreboard {0} created.'.format(nb))
-            if 'boards' not in bd: bd['boards'] = []
-            bd['boards'].append(cd['scores'][nb])
     else:
         context.bot.send_message(chat_id=chat, text='Usage: /newboard <boardName>.')
 
@@ -219,33 +226,40 @@ def delBoard(update, context):
     if board.owner.id !=  user.id:
         context.bot.send_message(chat_id=chat,
                 text='Board {0} can only be deleted by {1}'.format(board.name,
-                        getNickOrDefault(bd['nicks'],board.owner)))
+                        getNickOrDefault(cd.get('nicks',None), board.owner)))
         return
-    bd['boards'].remove(board)
-    del cd['scores'][context.args[0]]
+    del bd['boards'][chat][context.args[0]]
     context.bot.send_message(chat_id=chat, text='board {0} deleted.'.format(context.args[0]))
+    if context.args[0] == cd['defSB']:
+        del cd['defSB'] # remove default
+        for k in bd['boards'][chat].keys():
+            cd['defSB'] = k # just pick the first one if there is one
+            context.bot.send_message(chat_id=chat, text='New default board is {0}'.format(k))
+            break
 
 def getBoard(context, chat, name):
+    bd = context.bot_data
     cd = context.chat_data
     if(name):
         try:
-            return cd['scores'][name]
+            return bd['boards'][chat][name]
         except:
             context.bot.send_message(chat_id=chat,
                 text='Scoreboard {0} does not exist.\nUse /newboard to create it'.format(name))
             return None
     try:
-        return cd['defSB']
+        return bd['boards'][chat][cd['defSB']]
     except:
         context.bot.send_message(chat_id=chat,
-              text='no scoreboards exist.\nUse /newboard to create one'.format(boardName))
+              text='no scoreboards exist.\nUse /newboard to create one')
         return None
 
 def addScore(update, context, yday = False):
     chat = update.effective_chat.id
     user = update.effective_user
     cd = context.chat_data
-    nicks = context.bot_data.get('nicks',None)
+    nicks = cd.get('nicks',None)
+
     if len(context.args) > 1:
         boardName = context.args[1]
     else:
@@ -284,6 +298,7 @@ def setUnits(update, context):
 def setTZ(update, context):
     chat = update.effective_chat.id
     cd = context.chat_data
+    bd = context.bot_data
     try:
         tzname = context.args[0]
     except:
@@ -297,8 +312,8 @@ def setTZ(update, context):
                 text = "TZ {0} not recognised. Try something like /settz Australia/Canberra".format(tzname) )
         return
     resetwarnings()
-    if 'scores' in cd:
-        for sb in cd['scores']:
+    if chat in bd['boards']:
+        for sb in bd['boards'][chat].values():
             sb.setTZ(tz)
     cd['tz'] = tz
 
@@ -311,7 +326,7 @@ def listcmds(update, context):
 def printScores(update, context):
     chat = update.effective_chat.id
     cd = context.chat_data
-    nicks = context.bot_data.get('nicks', None)
+    nicks = cd.get('nicks', None)
     usage = "/scores [period [board]] period=day,week,month,year,yesterday,lastweek,lastmonth,lastyear,all"
     boardName = None
     if len(context.args) > 1:
@@ -344,21 +359,22 @@ def printScores(update, context):
 def listBoards(update, context):
     chat = update.effective_chat.id
     cd = context.chat_data
+    bd = context.bot_data
     sblist = []
-    if 'scores' not in cd:
+    if chat not in bd['boards'] or len(bd['boards'][chat].keys()) == 0:
         context.bot.send_message(chat_id=chat, text = "No scoreboards!");
         return
-    for sb in cd['scores'].keys():
-        sblist.append('{0}{1}'.format(sb,' [default]' if cd['scores'][sb] == cd['defSB'] else ''))
+    for sb in bd['boards'][chat].keys():
+        sblist.append('{0}{1}'.format(sb,' [default]' if sb == cd['defSB'] else ''))
     context.bot.send_message(chat_id=chat, text = "\n".join(sblist));
 
-def updateNick(bd, userid, nick):
-    if "nicks" not in bd:
-        bd["nicks"] = {}
+def updateNick(cd, userid, nick):
+    if "nicks" not in cd:
+        cd["nicks"] = {}
     if nick:
-        bd["nicks"][userid] = nick
+        cd["nicks"][userid] = nick
     else:
-        if bd["nicks"][userid]: del bd["nicks"][userid]
+        if userid in cd["nicks"]: del cd["nicks"][userid]
 
 def getNick(nicks, userid):
     if not nicks: return None
@@ -374,23 +390,24 @@ def getNickOrDefault(nicks, user):
 def setNick(update, context):
     chat = update.effective_chat.id
     userid = update.effective_user.id
-    bd = context.bot_data
+    cd = context.chat_data
     if len(context.args) > 0:
         nick = context.args[0]
-        updateNick(bd, userid, nick)
+        updateNick(cd, userid, nick)
         context.bot.send_message(chat_id=chat, text = "Nick set to {0}.".format(nick));
     else:
-        oldNick = getNick(bd.get('nicks',None), userid)
+        oldNick = getNick(cd.get('nicks',None), userid)
         if oldNick:
-            updateNick(bd, userid, None)
+            updateNick(cd, userid, None)
             context.bot.send_message(chat_id=chat, text = "Nick for {0} removed.".format(oldNick));
         else:
             context.bot.send_message(chat_id=chat, text = "No nick set.");
 
 def rolloverPeriods(context):
     if 'boards' not in context.bot_data: return
-    for sb in context.bot_data['boards']:
-        sb.rollover()
+    for chat in context.bot_data['boards']:
+        for sb in context.bot_data['boards'][chat].values():
+            sb.rollover()
 
 commands = [('start', start, 'Start a session with the bot - provides some basic instructions'),
             ('newboard', newBoard, 'create a new scoreboard'),
